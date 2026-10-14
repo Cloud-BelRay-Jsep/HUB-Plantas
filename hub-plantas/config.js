@@ -120,7 +120,11 @@ window.HUB_CONFIG = {
       views: [
         // ▼▼▼ URL — Looker Studio · Gateway
         { id: 'general', name: 'Gateway',
-          url: 'https://datastudio.google.com/embed/reporting/b8d78077-35ab-441a-95f3-4b9995313b67/page/p_5ht5aqmitd' }
+          // Vista general (se usa con "Todas las plantas")
+          url: 'https://datastudio.google.com/embed/reporting/b8d78077-35ab-441a-95f3-4b9995313b67/page/p_5ht5aqmitd',
+          urlPorPlanta: {
+            'confluencia': 'https://datastudio.google.com/u/0/reporting/b8d78077-35ab-441a-95f3-4b9995313b67/page/p_j13qqpqitd'
+          } }
       ],
       coverage: {
         'confluencia': 'activo'
@@ -134,7 +138,14 @@ window.HUB_CONFIG = {
       views: [
         // ▼▼▼ URL — Looker Studio · Análisis de Aceite
         { id: 'general', name: 'Análisis de Aceite',
-          url: 'https://datastudio.google.com/embed/reporting/53e0b950-6c81-4598-ae4a-ca9d1db824b5/page/p_mfeqkl7b0c' }
+          // Vista general (se usa con "Todas las plantas")
+          url: 'https://datastudio.google.com/embed/reporting/53e0b950-6c81-4598-ae4a-ca9d1db824b5/page/p_mfeqkl7b0c',
+          // Bitácora de análisis de aceite de cada planta
+          urlPorPlanta: {
+            'chancado-primario': 'https://datastudio.google.com/u/0/reporting/53e0b950-6c81-4598-ae4a-ca9d1db824b5/page/p_rfw1gy691d',
+            'molienda-sag':      'https://datastudio.google.com/u/0/reporting/53e0b950-6c81-4598-ae4a-ca9d1db824b5/page/p_4humjdpthd',
+            'confluencia':       'https://datastudio.google.com/u/0/reporting/53e0b950-6c81-4598-ae4a-ca9d1db824b5/page/p_vu9vfqsyqd'
+          } }
       ],
       coverage: {
         'confluencia':       'activo',
