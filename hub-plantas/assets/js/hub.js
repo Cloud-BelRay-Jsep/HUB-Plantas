@@ -43,6 +43,17 @@
     var vs = viewsOf(m), id = state.sub[m.id];
     return vs.filter(function (v) { return v.id === id; })[0] || vs[0];
   }
+  /* URL de una vista para la planta seleccionada:
+     urlPorPlanta[planta] si existe; si no, url (vista general / "Todas las plantas") */
+  function urlFor(v, plantId) {
+    plantId = plantId || state.plant;
+    var map = v.urlPorPlanta || {};
+    return (plantId !== ALL && map[plantId]) || v.url || '';
+  }
+  function frameKey(m, v) {
+    var map = v.urlPorPlanta || {};
+    return m.id + ':' + v.id + ':' + ((state.plant !== ALL && map[state.plant]) ? state.plant : 'general');
+  }
 
   /* Estado de un módulo en una planta: 'on' | 'soon' | 'off' */
   function statusOf(m, plantId) {
@@ -370,13 +381,8 @@
     $('home').hidden = true;
     $('viewer').hidden = false;
 
-    var v = currentView(m);
     $('viewer-category').textContent = catById(m.category).name;
     $('viewer-title').textContent = m.name;
-    $('viewer-source').textContent = sourceLabel(v.url);
-    $('viewer-source').hidden = !v.url;
-    var ext = $('viewer-external');
-    if (v.url) ext.href = externalUrl(v.url); else ext.removeAttribute('href');
 
     updateModuleTabs();
     renderViewTabs(m);
@@ -409,10 +415,16 @@
     var m = moduleById(state.module);
     if (!m) return;
     var v = currentView(m);
+    var url = urlFor(v);
     var s = statusOf(m, state.plant);
     hideStates(); hideFrames();
 
-    var showActions = s === 'on' && !!v.url;
+    $('viewer-source').textContent = sourceLabel(url);
+    $('viewer-source').hidden = !url;
+    var ext = $('viewer-external');
+    if (url) ext.href = externalUrl(url); else ext.removeAttribute('href');
+
+    var showActions = s === 'on' && !!url;
     $('viewer-reload').style.visibility = showActions ? '' : 'hidden';
     $('viewer-external').style.visibility = showActions ? '' : 'hidden';
 
@@ -435,18 +447,18 @@
       $('state-nocoverage').hidden = false;
       return;
     }
-    if (!v.url) { $('state-nourl').hidden = false; return; }
+    if (!url) { $('state-nourl').hidden = false; return; }
 
-    var key = m.id + ':' + v.id;
+    var key = frameKey(m, v);
     var f = frames[key];
     if (!f) {
       f = el('iframe', {
-        src: embedUrl(v.url), title: m.name + (viewsOf(m).length > 1 ? ' · ' + v.name : ''),
+        src: embedUrl(url), title: m.name + (viewsOf(m).length > 1 ? ' · ' + v.name : ''),
         allow: 'fullscreen; clipboard-write', allowfullscreen: true,
         referrerpolicy: 'strict-origin-when-cross-origin', loading: 'eager',
         // Mismos permisos que entrega Looker Studio en su código de inserción
         // (permiten iniciar sesión con Google dentro del iframe)
-        sandbox: isLooker(cleanUrl(v.url)) ? 'allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-downloads' : null
+        sandbox: isLooker(cleanUrl(url)) ? 'allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-downloads' : null
       });
       f.addEventListener('load', function () {
         f.classList.add('is-loaded');
@@ -456,7 +468,7 @@
       $('frames').appendChild(f);
     }
     f.classList.add('is-active');
-    if (!f.classList.contains('is-loaded')) showLoading(v.url);
+    if (!f.classList.contains('is-loaded')) showLoading(url);
   }
 
   function showLoading(url) {
@@ -469,10 +481,11 @@
 
   function reloadCurrent() {
     var m = moduleById(state.module); if (!m) return;
-    var f = frames[m.id + ':' + currentView(m).id];
+    var v = currentView(m);
+    var f = frames[frameKey(m, v)];
     if (!f) return;
     f.classList.remove('is-loaded');
-    showLoading(currentView(m).url);
+    showLoading(urlFor(v));
     f.src = f.src;
   }
 

@@ -71,6 +71,10 @@ window.HUB_CONFIG = {
           mostrarse dentro de un iframe.
         Déjalo en '' si aún no existe: el visor mostrará "Dashboard en
         preparación".
+     views[].urlPorPlanta → (opcional) una URL distinta para cada planta,
+                   p. ej. la página de esa planta dentro del mismo informe.
+                   Al cambiar de planta, el visor salta solo a esa página.
+                   Las plantas que no aparezcan usan views[].url.
      views[].id  → identificador corto (se usa en enlaces directos:
                    #planta=molienda-sag&modulo=parametros&vista=mb3)
 
@@ -89,7 +93,16 @@ window.HUB_CONFIG = {
       views: [
         // ▼▼▼ URL — Looker Studio · Lubricadores Automáticos
         { id: 'general', name: 'Lubricadores Automáticos',
-          url: 'https://datastudio.google.com/embed/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_piypaj1njd' }
+          // Vista general (se usa con "Todas las plantas")
+          url: 'https://datastudio.google.com/embed/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_piypaj1njd',
+          // Página de Inspección de Lubricador Automático de cada planta
+          urlPorPlanta: {
+            'chancado-primario': 'https://datastudio.google.com/u/0/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_alofo8oh7d',
+            'molienda-sag':      'https://datastudio.google.com/u/0/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_84z84bph7d',
+            'confluencia':       'https://datastudio.google.com/u/0/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_eq1vygtm7d',
+            'pre-chancado-cf':   'https://datastudio.google.com/u/0/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_gqqb80tm7d',
+            'pre-chancado-sag':  'https://datastudio.google.com/u/0/reporting/536368c2-76fe-4dc1-a0bf-b32e06e2bd18/page/p_428v5j7x7d'
+          } }
       ],
       coverage: {
         'chancado-primario': 'activo',
