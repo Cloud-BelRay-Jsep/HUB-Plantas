@@ -54,7 +54,7 @@ window.HUB_CONFIG = {
     { id: 'lubricantes',    name: 'Lubricantes' },
     { id: 'automatizacion', name: 'Automatización' },
     { id: 'servicio',       name: 'Servicio' },
-    { id: 'tfm',            name: 'Total Fluid Management (TFM)' }   // transversal: siempre al final
+    { id: 'tfm',            name: 'Total Fluid Management (TFM)', short: 'TFM' }   // transversal: siempre al final
   ],
 
   /* ------------------------------------------------------------------------
@@ -139,6 +139,24 @@ window.HUB_CONFIG = {
       ],
       coverage: {
         'molienda-sag': 'activo'
+      }
+    },
+    {
+      id: 'consumos',
+      category: 'lubricantes',
+      name: 'Seguimiento de Consumos',
+      description: 'Consumo de lubricantes por planta y por periodo, para controlar el gasto y detectar desviaciones.',
+      views: [
+        // ▼▼▼ URL — Looker Studio · Seguimiento de Consumos (un solo tablero para todas las plantas)
+        { id: 'general', name: 'Seguimiento de Consumos',
+          url: 'https://datastudio.google.com/u/0/reporting/707a51b0-6bd7-4f7c-a143-f0847b36e7cb/page/p_kl61a0kd8d' }
+      ],
+      coverage: {
+        'chancado-primario': 'activo',
+        'molienda-sag':      'activo',
+        'confluencia':       'activo',
+        'pre-chancado-cf':   'activo',
+        'pre-chancado-sag':  'activo'
       }
     },
     {

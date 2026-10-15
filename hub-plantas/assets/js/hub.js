@@ -369,16 +369,82 @@
     if (!silent) writeHash(false);
   }
 
-  /* ---------- visor ---------- */
-  var modTabs = [];
+  /* ---------- visor: menú de módulos agrupado por pilar ---------- */
+  var catBtns = {}, openMenu = null;
   function renderModuleTabs() {
     var wrap = $('module-switch');
-    C.modules.forEach(function (m) {
-      var b = el('button', { class: 'mod-tab', type: 'button', role: 'tab', 'data-module': m.id, 'aria-selected': 'false', tabindex: '-1' }, esc(m.name));
-      b.addEventListener('click', function () { openModule(m.id); });
-      wrap.appendChild(b); modTabs.push(b);
+    C.categories.forEach(function (cat) {
+      var mods = C.modules.filter(function (m) { return m.category === cat.id; });
+      if (!mods.length) return;
+      var single = mods.length === 1;
+      var g = el('div', { class: 'pill-group' });
+      var b = el('button', {
+        class: 'cat-btn', type: 'button', 'data-cat': cat.id,
+        'aria-haspopup': single ? null : 'menu', 'aria-expanded': single ? null : 'false',
+        title: single ? mods[0].name : null
+      },
+        '<span class="cat-btn__name">' + esc(cat.name) + '</span>' +
+        (cat.short ? '<span class="cat-btn__short">' + esc(cat.short) + '</span>' : '') +
+        (single ? '' : '<span class="cat-btn__count" aria-label="' + mods.length + ' módulos">' + mods.length + '</span>' +
+          '<svg class="ico cat-btn__caret" aria-hidden="true"><use href="#i-caret"/></svg>'));
+      g.appendChild(b);
+      if (single) {
+        b.addEventListener('click', function () { closeMenu(); openModule(mods[0].id); });
+      } else {
+        var menu = el('div', { class: 'cat-menu', role: 'menu', 'aria-label': cat.name, hidden: true });
+        mods.forEach(function (m) {
+          var it = el('button', { class: 'cat-menu__item', type: 'button', role: 'menuitemradio', 'aria-checked': 'false', 'data-module': m.id, tabindex: '-1' },
+            '<span class="mark" aria-hidden="true"></span><span class="cat-menu__name">' + esc(m.name) + '</span><span class="cat-menu__state"></span>');
+          it.addEventListener('click', function () { closeMenu(); openModule(m.id); b.focus(); });
+          menu.appendChild(it);
+        });
+        g.appendChild(menu);
+        b.addEventListener('click', function () { openMenu === menu ? closeMenu() : showMenu(b, menu, false); });
+        b.addEventListener('keydown', function (e) {
+          if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showMenu(b, menu, true); }
+        });
+        menu.addEventListener('keydown', function (e) {
+          var items = [].slice.call(menu.querySelectorAll('.cat-menu__item'));
+          var i = items.indexOf(document.activeElement);
+          if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+          else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+          else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+          else if (e.key === 'Tab') { closeMenu(); }
+        });
+      }
+      catBtns[cat.id] = b;
+      wrap.appendChild(g);
     });
-    wrap.addEventListener('keydown', function (e) { rovingKeys(e, modTabs, function (b) { openModule(b.getAttribute('data-module')); }); });
+    document.addEventListener('click', function (e) {
+      if (openMenu && !openMenu.parentNode.contains(e.target)) closeMenu();
+    });
+    // Un clic dentro del tablero (iframe) no llega a la página: cerramos al perder el foco
+    window.addEventListener('blur', function () { setTimeout(function () {
+      if (document.activeElement && document.activeElement.tagName === 'IFRAME') closeMenu();
+    }, 0); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && openMenu) { var btn = openMenu.parentNode.querySelector('.cat-btn'); closeMenu(); btn.focus(); }
+    });
+  }
+  function showMenu(btn, menu, focusFirst) {
+    closeMenu();
+    menu.hidden = false;
+    menu.classList.remove('is-right');
+    btn.setAttribute('aria-expanded', 'true');
+    openMenu = menu;
+    var r = menu.getBoundingClientRect();
+    if (r.right > document.documentElement.clientWidth - 8) menu.classList.add('is-right');
+    var items = [].slice.call(menu.querySelectorAll('.cat-menu__item'));
+    var cur = menu.querySelector('[aria-checked="true"]');
+    if (focusFirst) (cur || items[0]).focus();
+  }
+  function closeMenu() {
+    if (!openMenu) return;
+    openMenu.hidden = true;
+    var b = openMenu.parentNode.querySelector('.cat-btn');
+    if (b) b.setAttribute('aria-expanded', 'false');
+    openMenu = null;
   }
   function rovingKeys(e, list, act) {
     if (['ArrowRight', 'ArrowLeft'].indexOf(e.key) < 0) return;
@@ -389,15 +455,19 @@
     list[i].focus(); act(list[i]);
   }
   function updateModuleTabs() {
-    modTabs.forEach(function (b) {
-      var m = moduleById(b.getAttribute('data-module'));
-      var sel = m.id === state.module;
-      b.setAttribute('aria-selected', sel ? 'true' : 'false');
-      b.setAttribute('tabindex', sel ? '0' : '-1');
-      b.setAttribute('data-s', statusOf(m, state.plant));
+    var curCat = state.module ? moduleById(state.module).category : null;
+    Object.keys(catBtns).forEach(function (cid) {
+      var on = cid === curCat;
+      catBtns[cid].classList.toggle('is-current', on);
+      if (on) catBtns[cid].setAttribute('aria-current', 'true'); else catBtns[cid].removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.cat-menu__item').forEach(function (it) {
+      var m = moduleById(it.getAttribute('data-module'));
       var st = statusOf(m, state.plant);
-      b.title = isOpen(st) && st !== 'partial' ? '' : labelOf(m, st) + ' en ' + plantById(state.plant).name;
-      if (sel && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      it.setAttribute('aria-checked', m.id === state.module ? 'true' : 'false');
+      it.setAttribute('data-s', st);
+      it.querySelector('.mark').className = 'mark mark--' + st;
+      it.querySelector('.cat-menu__state').textContent = (state.plant === ALL || st === 'on') ? '' : labelOf(m, st);
     });
   }
   function renderViewTabs(m) {
@@ -439,6 +509,7 @@
   }
 
   function goHome(fromHistory) {
+    closeMenu();
     exitFullscreen();
     state.view = 'home'; state.module = null;
     document.body.setAttribute('data-view', 'home');
