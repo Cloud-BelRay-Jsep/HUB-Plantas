@@ -15,6 +15,19 @@
   if (!C) { document.body.insertAdjacentHTML('afterbegin', '<p style="padding:24px">No se encontró config.js. Verifica que el archivo esté junto a index.html.</p>'); return; }
 
   var ALL = 'todas';
+
+  /* Los módulos siguen siempre el orden de los pilares (categories) */
+  (function () {
+    var rank = {};
+    C.categories.forEach(function (c, i) { rank[c.id] = i; });
+    C.modules = C.modules.map(function (m, i) { return { m: m, i: i }; })
+      .sort(function (a, b) {
+        var ra = rank[a.m.category] === undefined ? 99 : rank[a.m.category];
+        var rb = rank[b.m.category] === undefined ? 99 : rank[b.m.category];
+        return ra - rb || a.i - b.i;
+      })
+      .map(function (x) { return x.m; });
+  })();
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var state = { plant: ALL, view: 'home', module: null, sub: {} };
@@ -55,16 +68,26 @@
     return m.id + ':' + v.id + ':' + ((state.plant !== ALL && map[state.plant]) ? state.plant : 'general');
   }
 
-  /* Estado de un módulo en una planta: 'on' | 'soon' | 'off' */
+  /* Estado de un módulo en una planta: 'on' | 'partial' | 'soon' | 'off' */
   function statusOf(m, plantId) {
     if (plantId === ALL) return 'on';
     var s = (m.coverage || {})[plantId];
     if (s === 'activo') return 'on';
-    if (s === 'proximamente') return 'soon';
-    return 'off';
+    if (s === 'parcial') return 'partial';
+    if (s === 'noAplica') return 'off';
+    return 'soon';            // sin avance todavía → "Próximamente"
   }
-  function plantsOn(m) { return C.plants.filter(function (p) { return statusOf(m, p.id) === 'on'; }); }
-  function countOn(plantId) { return C.modules.filter(function (m) { return statusOf(m, plantId) === 'on'; }).length; }
+  function isOpen(s) { return s === 'on' || s === 'partial'; }
+  function plantsOn(m) { return C.plants.filter(function (p) { return isOpen(statusOf(m, p.id)); }); }
+  function countOn(plantId) { return C.modules.filter(function (m) { return isOpen(statusOf(m, plantId)); }).length; }
+  function countPartial(plantId) { return C.modules.filter(function (m) { return statusOf(m, plantId) === 'partial'; }).length; }
+
+  /* Textos de cada estado (cada módulo puede cambiarlos con "etiquetas" en config.js) */
+  var LABEL_KEYS = { on: 'activo', partial: 'parcial', soon: 'proximamente', off: 'noAplica' };
+  var LABEL_DEFAULTS = { on: 'Activo', partial: 'Avance parcial', soon: 'Próximamente', off: 'No aplica' };
+  function labelOf(m, s) { var e = m.etiquetas || {}; return e[LABEL_KEYS[s]] || LABEL_DEFAULTS[s]; }
+  /* ¿El módulo solo se ve por planta (sin vista general)? */
+  function needsPlant(m) { var v = currentView(m); return !v.url && !!v.urlPorPlanta; }
 
   /* Acepta una URL o el código <iframe …> completo copiado desde Looker Studio */
   function cleanUrl(raw) {
@@ -83,17 +106,31 @@
     var p = u.pathname.replace(/^\/u\/\d+/, '').replace(/\/edit\/?$/, '').replace(/^\/embed/, '');
     return { path: p, search: u.search };
   }
+  /* Google Drive: carpetas compartidas se muestran como lista de archivos */
+  function driveFolderId(url) {
+    var m = cleanUrl(url).match(/drive\.google\.com\/(?:drive\/(?:u\/\d+\/)?folders\/|embeddedfolderview\?id=)([\w-]+)/);
+    return m ? m[1] : null;
+  }
+  function isDrive(url) { return !!driveFolderId(url); }
   function embedUrl(url) {
     url = cleanUrl(url);
+    var dId = driveFolderId(url);
+    if (dId) return 'https://drive.google.com/embeddedfolderview?id=' + dId + '#list';
     if (!url || !isLooker(url)) return url;
     try { var l = lookerPath(url); return 'https://' + hostOf(url) + '/embed' + l.path + l.search; } catch (e) { return url; }
   }
   function externalUrl(url) {
     url = cleanUrl(url);
+    var dId = driveFolderId(url);
+    if (dId) return 'https://drive.google.com/drive/folders/' + dId;
     if (!url || !isLooker(url)) return url;
     try { var l = lookerPath(url); return 'https://' + hostOf(url) + l.path + l.search; } catch (e) { return url; }
   }
-  function sourceLabel(url) { url = cleanUrl(url); return !url ? '' : isLooker(url) ? 'Looker Studio' : 'Página web'; }
+  function sourceLabel(url) { url = cleanUrl(url); return !url ? '' : isDrive(url) ? 'Google Drive' : isLooker(url) ? 'Looker Studio' : 'Página web'; }
+  function goText(m) {
+    if (state.plant === ALL && needsPlant(m)) return 'Elegir planta';
+    return isDrive(urlFor(currentView(m))) ? 'Abrir carpeta' : 'Abrir dashboard';
+  }
 
   /* ---------- marca ---------- */
   function renderBrand() {
@@ -187,7 +224,7 @@
     var t = el('article', { class: 'tile', 'data-module': m.id });
     var pips = C.plants.map(function (p) {
       var s = statusOf(m, p.id);
-      return '<span class="pip ' + s + '" data-pip="' + p.id + '" title="' + esc(p.name) + ': ' + (s === 'on' ? 'activo' : s === 'soon' ? 'próximamente' : 'no aplica') + '"></span>';
+      return '<span class="pip ' + s + '" data-pip="' + p.id + '" title="' + esc(p.name) + ': ' + esc(labelOf(m, s).toLowerCase()) + '"></span>';
     }).join('');
     var nOn = plantsOn(m).length;
     var views = '';
@@ -222,18 +259,22 @@
       if (state.plant === ALL) {
         t.removeAttribute('data-state');
         badge.className = 'badge'; badge.textContent = '';
-        go.textContent = 'Abrir dashboard';
+        go.textContent = goText(m);
       } else if (s === 'on') {
         t.setAttribute('data-state', 'on');
-        badge.className = 'badge badge--on'; badge.textContent = 'Activo en ' + plant.name;
-        go.textContent = 'Abrir dashboard';
+        badge.className = 'badge badge--on'; badge.textContent = labelOf(m, s) + ' en ' + plant.name;
+        go.textContent = goText(m);
+      } else if (s === 'partial') {
+        t.setAttribute('data-state', 'partial');
+        badge.className = 'badge badge--partial'; badge.textContent = labelOf(m, s) + ' en ' + plant.name;
+        go.textContent = goText(m);
       } else if (s === 'soon') {
         t.setAttribute('data-state', 'soon');
-        badge.className = 'badge badge--soon'; badge.textContent = 'Próximamente';
-        go.textContent = 'Ver detalle';
+        badge.className = 'badge badge--soon'; badge.textContent = labelOf(m, s) + ' en ' + plant.name;
+        go.textContent = 'Ver plantas activas';
       } else {
         t.setAttribute('data-state', 'off');
-        badge.className = 'badge badge--off'; badge.textContent = 'No aplica en ' + plant.name;
+        badge.className = 'badge badge--off'; badge.textContent = labelOf(m, s) + ' en ' + plant.name;
         go.textContent = 'Ver dónde aplica';
       }
       t.querySelectorAll('.pip').forEach(function (p) {
@@ -244,7 +285,7 @@
       var id = n.getAttribute('data-cat-count');
       var mods = C.modules.filter(function (m) { return m.category === id; });
       if (state.plant === ALL) { n.textContent = mods.length + (mods.length === 1 ? ' módulo' : ' módulos'); return; }
-      var on = mods.filter(function (m) { return statusOf(m, state.plant) === 'on'; }).length;
+      var on = mods.filter(function (m) { return isOpen(statusOf(m, state.plant)); }).length;
       n.textContent = on + ' de ' + mods.length + ' con servicio';
     });
   }
@@ -261,7 +302,7 @@
       return '<tr><th scope="row">' + esc(m.name) + (n > 1 ? '<small>' + n + ' tableros</small>' : '') + '</th>' +
         C.plants.map(function (p) {
           var s = statusOf(m, p.id);
-          var label = m.name + ' en ' + p.name + ': ' + (s === 'on' ? 'servicio activo, abrir dashboard' : s === 'soon' ? 'próximamente' : 'no aplica');
+          var label = m.name + ' en ' + p.name + ': ' + labelOf(m, s).toLowerCase() + (isOpen(s) ? ' — abrir' : '');
           return '<td data-col="' + p.id + '"><button class="mx-cell" type="button" data-s="' + s + '" data-module="' + m.id + '" data-plant="' + p.id + '" aria-label="' + esc(label) + '" title="' + esc(label) + '"><span class="mark mark--' + s + '"></span></button></td>';
         }).join('') + '</tr>';
     }).join('') + '</tbody>';
@@ -275,7 +316,7 @@
     tb.querySelectorAll('.mx-cell').forEach(function (b) {
       b.addEventListener('click', function () {
         var pid = b.getAttribute('data-plant'), mid = b.getAttribute('data-module');
-        if (b.getAttribute('data-s') === 'on') { setPlant(pid, true); openModule(mid); }
+        if (isOpen(b.getAttribute('data-s'))) { setPlant(pid, true); openModule(mid); }
         else setPlant(pid);
       });
     });
@@ -299,8 +340,12 @@
     if (state.plant === ALL) {
       $('plant-summary').innerHTML = '<b>' + total + ' soluciones</b> en ' + C.plants.length + ' plantas. Elige una planta para ver dónde está activo cada servicio.';
     } else {
-      var n = countOn(state.plant);
-      $('plant-summary').innerHTML = '<b>' + n + ' de ' + total + ' soluciones</b> con servicio activo en ' + esc(name) + '.';
+      var n = countOn(state.plant), np = countPartial(state.plant), ns = total - n;
+      var extra = [];
+      if (np) extra.push(np + ' con avance parcial');
+      if (ns) extra.push(ns + ' próximamente');
+      $('plant-summary').innerHTML = '<b>' + n + ' de ' + total + ' soluciones</b> con servicio en ' + esc(name) +
+        (extra.length ? ' (' + extra.join(', ') + ')' : '') + '.';
     }
   }
 
@@ -350,7 +395,8 @@
       b.setAttribute('aria-selected', sel ? 'true' : 'false');
       b.setAttribute('tabindex', sel ? '0' : '-1');
       b.setAttribute('data-s', statusOf(m, state.plant));
-      b.title = statusOf(m, state.plant) === 'off' ? 'No aplica en ' + plantById(state.plant).name : '';
+      var st = statusOf(m, state.plant);
+      b.title = isOpen(st) && st !== 'partial' ? '' : labelOf(m, st) + ' en ' + plantById(state.plant).name;
       if (sel && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
   }
@@ -424,27 +470,26 @@
     var ext = $('viewer-external');
     if (url) ext.href = externalUrl(url); else ext.removeAttribute('href');
 
-    var showActions = s === 'on' && !!url;
+    var showActions = isOpen(s) && !!url;
     $('viewer-reload').style.visibility = showActions ? '' : 'hidden';
     $('viewer-external').style.visibility = showActions ? '' : 'hidden';
 
-    if (s !== 'on') {
+    var vs = $('viewer-status');
+    if (s === 'partial') { vs.textContent = labelOf(m, s); vs.hidden = false; } else { vs.hidden = true; }
+
+    if (!isOpen(s)) {
       var pname = plantById(state.plant).name;
-      $('nocov-title').textContent = s === 'soon' ? m.name + ' llegará pronto a ' + pname : m.name + ' no aplica en ' + pname;
+      var title = s === 'soon' ? m.name + ' llegará pronto a ' + pname
+        : (m.etiquetas && m.etiquetas.noAplica) ? m.name + ': ' + labelOf(m, s).toLowerCase() + ' en ' + pname
+        : m.name + ' no aplica en ' + pname;
       var on = plantsOn(m);
-      $('nocov-text').textContent = on.length
-        ? 'Este servicio está activo en ' + (on.length === 1 ? 'esta planta' : 'estas plantas') + '. Elige una para verlo:'
-        : 'Este servicio aún no está activo en ninguna planta.';
-      var box = $('nocov-plants'); box.innerHTML = '';
-      on.forEach(function (p) {
-        var b = el('button', { class: 'btn btn--solid', type: 'button' }, esc(p.name));
-        b.addEventListener('click', function () { setPlant(p.id); });
-        box.appendChild(b);
-      });
-      var all = el('button', { class: 'btn btn--ghost', type: 'button' }, 'Ver en todas las plantas');
-      all.addEventListener('click', function () { setPlant(ALL); });
-      box.appendChild(all);
-      $('state-nocoverage').hidden = false;
+      plantChooser(m, title, on.length
+        ? 'Este servicio está disponible en ' + (on.length === 1 ? 'esta planta' : 'estas plantas') + '. Elige una para verlo:'
+        : 'Este servicio aún no está disponible en ninguna planta.', true);
+      return;
+    }
+    if (!url && state.plant === ALL && needsPlant(m)) {
+      plantChooser(m, 'Elige una planta para ver ' + m.name, 'Este módulo tiene contenido propio para cada planta.', false);
       return;
     }
     if (!url) { $('state-nourl').hidden = false; return; }
@@ -469,6 +514,26 @@
     }
     f.classList.add('is-active');
     if (!f.classList.contains('is-loaded')) showLoading(url);
+  }
+
+  /* Botones de planta (para "no aplica" y para módulos que solo se ven por planta) */
+  function plantChooser(m, title, text, offerAll) {
+    $('nocov-title').textContent = title;
+    $('nocov-text').textContent = text;
+    var box = $('nocov-plants'); box.innerHTML = '';
+    plantsOn(m).forEach(function (p) {
+      var partial = statusOf(m, p.id) === 'partial';
+      var b = el('button', { class: 'btn ' + (partial ? 'btn--ghost' : 'btn--solid'), type: 'button' },
+        esc(p.name) + (partial ? ' <small>· ' + esc(labelOf(m, 'partial').toLowerCase()) + '</small>' : ''));
+      b.addEventListener('click', function () { setPlant(p.id); });
+      box.appendChild(b);
+    });
+    if (offerAll) {
+      var all = el('button', { class: 'btn btn--ghost', type: 'button' }, 'Ver en todas las plantas');
+      all.addEventListener('click', function () { setPlant(ALL); });
+      box.appendChild(all);
+    }
+    $('state-nocoverage').hidden = false;
   }
 
   function showLoading(url) {
